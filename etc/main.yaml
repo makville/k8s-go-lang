@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+  labels:
+    app: nginx
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+  selector:
+    app: nginx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world-go
+  labels:
+    app: go-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+  selector:
+    app: go-app
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+data:
+  nginx.conf: |
+    events {
+    }
+    http {
+      include /etc/nginx/sites-enabled/*.*;
+      include /etc/nginx/mime.types;
+      server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+        index index.html;
+        error_log /var/log/nginx/error.log;
+        access_log /var/log/nginx/access.log;
+        root /var/www/app;
+        location / {
+          index index.html;
+        }
+        location /api/ {
+          proxy_set_header X-Forwarded-For $remote_addr;
+          proxy_set_header Host $http_host;
+          proxy_pass http://127.0.0.1:3000/;
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cluster-volume-2
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity: 
+    storage: 1G
+  accessModes:
+    - ReadWriteOnce
+  hostPath: 
+    path: "/mnt/data2"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: www-app-vol-claim-2
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500M
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: go-hello-world-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: go-hello-world
+          image: go-hello-world:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          volumeMounts:
+            - name: www-volume
+              mountPath: /var/www
+          lifecycle:
+            postStart:
+              exec:
+                command: 
+                  [
+                    "/bin/sh",
+                    "-c",
+                    "cd /app/ && ./main"
+                  ]
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: nginx-config-volume
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: www-volume
+          persistentVolumeClaim: 
+            claimName: www-app-vol-claim-2
+        - name: nginx-config-volume
+          configMap:
+            name: nginx-config
+---

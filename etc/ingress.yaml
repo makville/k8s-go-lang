@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+#  annotations:
+#    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+#    kubernetes.io/ingress.class: "nginx"
+spec:
+#  tls:
+#  - hosts:
+#    - go-helloworld-app
+#    secretName: echo-tls
+  rules:
+  - host: helloworld-app
+    http:
+        paths:
+        - pathType: Prefix
+          path: "/go"
+          backend:
+            service:
+              name: hello-world-go
+              port:
+                number: 3000
+        - pathType: Prefix
+          path: "/php"
+          backend:
+            service:
+              name: nginx-service
+              port:
+                number: 80
